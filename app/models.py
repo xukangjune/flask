@@ -80,7 +80,7 @@ class Role(db.Model):
         return '<Role %r>' % self.name
 
 
-class Follow(db.model):
+class Follow(db.Model):
     __tablename__ = 'follows'
     __table_args__ = {'mysql_charset': 'utf8'}
     follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
@@ -110,7 +110,7 @@ class User(UserMixin, db.Model):
     followed = db.relationship('Follow', foreign_keys=[Follow.follower_id],
                                backref=db.backref('follower', lazy='joined'), lazy='dynamic',
                                cascade='all, delete-orphan')
-    follower = db.relationship('Follow', foreign_keys=[Follow.followed_id],
+    followers = db.relationship('Follow', foreign_keys=[Follow.followed_id],
                                backref=db.backref('followed', lazy='joined'), lazy='dynamic',
                                cascade='all, delete-orphan')
 
@@ -127,6 +127,9 @@ class User(UserMixin, db.Model):
         """如果邮箱存在且散列码为空，就重新生成散列码，并提交到数据库"""
         if self.email is not None and self.avatar_hash is None:
             self.avatar_hash = self.gravatar_hash()
+
+        """自己变成自己的关注者"""
+        self.follow(self)
 
     @property
     def password(self):
@@ -219,10 +222,11 @@ class User(UserMixin, db.Model):
             except IntegrityError:
                 db.session.rollback()
 
+    """下面四个函数用来判断是否是某个用户的粉丝，以及某个用户是否是自己的粉丝。"""
     def follow(self, user):
         if not self.is_following(user):
-            f = Follow(followed=user)
-            self.followed.append(f)
+            f = Follow(follower=self, followed=user)
+            db.session.add(f)
 
     def unfollow(self, user):
         f = self.followed.filter_by(followed_id=user.id).first()
@@ -232,12 +236,28 @@ class User(UserMixin, db.Model):
     def is_following(self, user):
         if user.id is None:
             return False
-        return self.followed.filter_by(followed_id=user.id).first() is not None
+        return self.followed.filter_by(
+            followed_id=user.id).first() is not None
 
     def is_followed_by(self, user):
         if user.id is None:
             return False
         return self.followers.filter_by(follower_id=user.id).first() is not None
+
+    @property
+    def followed_posts(self):
+        return Post.query.join(Follow, Follow.followed_id == Post.author_id) \
+            .filter(Follow.follower_id == self.id)
+
+    """将用户设为自己的关注者"""
+    @staticmethod
+    def add_self_follows():
+        for user in User.query.all():
+            if not user.is_following(user):
+                user.follow(user)
+                db.session.add(user)
+                db.session.commit()
+
 
     def __repr__(self):
         return '<User %r>' % self.username
