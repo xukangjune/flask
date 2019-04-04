@@ -113,6 +113,8 @@ class User(UserMixin, db.Model):
     followers = db.relationship('Follow', foreign_keys=[Follow.followed_id],
                                backref=db.backref('followed', lazy='joined'), lazy='dynamic',
                                cascade='all, delete-orphan')
+    comments = db.relationship('Comment', backref='author', lazy='dynamic')
+
 
     """这里就来构造实例了，传入的参数就是id，email，name什么的。如果角色没有分配的话，就先检查是否是管理员，这可以
     从邮箱的确认。看邮箱是否与本地存储的管理员邮箱一直，如果是的话，就将role设为管理员；如果不是，那么就是设为默认。 """
@@ -286,6 +288,7 @@ class Post(db.Model):
     body_html = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    comments = db.relationship('Comment', backref='post', lazy='dynamic')
 
 
     """创建虚拟博客"""
@@ -300,3 +303,27 @@ class Post(db.Model):
 
 """只要这个实例的body字段设了新值，函数就会自动被调用"""
 db.event.listen(Post.body, 'set', Post.on_changed_body)
+
+
+"""创建评论表"""
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    __table_args__ = {'mysql_charset': 'utf8'}
+    id = db.Column(db.Integer, primary_key=True)
+    body = db.Column(db.Text)
+    body_html = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    disabled = db.Column(db.Boolean)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
+
+    @staticmethod
+    def on_changed_body(target, value, oldvalue, initiator):
+        allowed_tags = ['a', 'abbr', 'acronym', 'b', 'code', 'em', 'i',
+                        'strong']
+        target.body_html = bleach.linkify(bleach.clean(
+            markdown(value, output_format='html'),
+            tags=allowed_tags, strip=True))
+
+"""定义一个事件，只要有新的评论添加，就会自动调用函数"""
+db.event.listen(Comment.body, 'set', Comment.on_changed_body)

@@ -7,7 +7,7 @@
 {% block page_content %}
 <div class="page-header">
     <!--如果当前用户存在且已经被认证-->
-    <h1>Hello, {% if current_user.is_authenticated %}{{ current_user.username }}{% else %}Stranger{% endif %}!</h1>
+    <h1>欢迎, {% if current_user.is_authenticated %}{{ current_user.username }}{% else %}陌生人{% endif %}!</h1>
 </div>
 <div class="post-tabs">
     <ul class="nav nav-tabs">

@@ -1,9 +1,9 @@
 from flask import current_app, request, render_template, flash, redirect, url_for, abort, make_response
 from flask_login import login_required, current_user
 from . import main
-from ..models import User, Role, Permission, Post
+from ..models import User, Role, Permission, Post, Comment
 from .. import db
-from .forms import PostForm, EditProfileForm, EditProfileAdminForm
+from .forms import PostForm, EditProfileForm, EditProfileAdminForm, CommentForm
 from ..decorators import admin_required, permission_required
 
 
@@ -93,11 +93,31 @@ def edit_profile_admin(id):
     form.about_me.data = user.about_me
     return render_template('edit_profile.html', form=form, user=user)
 
-@main.route('/post/<int:id>')
+
+@main.route('/post/<int:id>', methods=['GET', 'POST'])
 def post(id):
     post = Post.query.get_or_404(id)
+    form = CommentForm()
+    if form.validate_on_submit():
+        comment = Comment(body=form.body.data,post=post,
+                          author=current_user._get_current_object())
+        db.session.add(comment)
+        db.session.commit()
+        flash('评论提交成功！')
+        """如果评论提交成功，那么博客文章的页面将会跳到评论的最后一页，看到最新的评论"""
+        return redirect(url_for('.post', id=post.id, page=-1))
+    page = request.args.get('page',1, type=int)
+    if page == -1:
+        page = (post.comments.count() - 1) // \
+               current_app.config['COMMENTS_PER_PAGE'] + 1
+    pagination = post.comments.order_by(Comment.timestamp.asc()).paginate(
+        page, per_page=current_app.config['COMMENTS_PER_PAGE'],
+        error_out=False)
+    comments = pagination.items
     """这里必须要传入一个post列表，这样post.html引用的_post.html独立模块才能处理post。"""
-    return render_template('post.html', posts=[post])
+    return render_template('post.html', posts=[post], form=form,
+                           comments=comments, pagination=pagination)
+
 
 """编辑微博文章的视图函数，只允许文章作者或管理员来编辑文章， 如果编辑了，那么去往编辑后的
 微博文章主页。没有编辑时，显示的内容就是文章原来的内容"""
@@ -134,6 +154,7 @@ def follow(username):
     db.session.commit()
     flash("你已经关注了%s" % username)
     return redirect(url_for('.user',username=username))
+
 
 """取消关注"""
 @main.route('/unfollow/<username>')
@@ -196,9 +217,50 @@ def show_all():
     resp.set_cookie('show_followed', '', max_age=20*24*60*60)
     return resp
 
+
 @main.route('/followed')
 @login_required
 def show_followed():
     resp = make_response(redirect(url_for('.index')))
     resp.set_cookie('show_followed', '1', max_age=20*24*60*60)
     return resp
+
+
+"""管理评论的路由"""
+@main.route('/moderate')
+@login_required
+@permission_required(Permission.MODERATE)
+def moderate():
+    page = request.args.get('page', 1, type=int)
+    pagination = Comment.query.order_by(Comment.timestamp.desc()).paginate(
+        page, per_page=current_app.config['COMMENTS_PER_PAGE'],
+        error_out=False)
+    comments = pagination.items
+    return render_template('moderate.html', comments=comments,
+                           pagination=pagination, page=page)
+
+
+"""下面这两个函数都是对评论进行控制的，即协管员和管理员都有权限决定此条评论能否显示，每次决定之后，
+都要将所有的评论重新渲染"""
+@main.route('/moderate/enable/<int:id>')
+@login_required
+@permission_required(Permission.MODERATE)
+def moderate_enable(id):
+    comment = Comment.query.get_or_404(id)
+    comment.disabled = False
+    db.session.add(comment)
+    db.session.commit()
+    return redirect(url_for('.moderate',
+                            page=request.args.get('page', 1, type=int)))
+
+
+@main.route('/moderate/disable/<int:id>')
+@login_required
+@permission_required(Permission.MODERATE)
+def moderate_disable(id):
+    comment = Comment.query.get_or_404(id)
+    comment.disabled = True
+    db.session.add(comment)
+    db.session.commit()
+    return redirect(url_for('.moderate',
+                            page=request.args.get('page', 1, type=int)))
