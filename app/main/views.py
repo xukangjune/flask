@@ -5,6 +5,19 @@ from ..models import User, Role, Permission, Post, Comment
 from .. import db
 from .forms import PostForm, EditProfileForm, EditProfileAdminForm, CommentForm
 from ..decorators import admin_required, permission_required
+from flask_sqlalchemy import get_debug_queries
+
+
+"""获取Flask-SQLAlchemy记录得查询时间并把缓慢得查询写入日志"""
+@main.after_app_request
+def after_request(response):
+    for query in get_debug_queries():
+        if query.durartion >= current_app.config['SLOW_DB_QUERY_TIME']:
+            current_app.logger.warning(
+                'Slow query: %s\nParameters: %s\nDuration: %fs\nContext: %s\n'
+                % (query.statement, query.parameters, query.duration,
+                   query.context))
+        return response
 
 
 """这个视图函数把表单和博客文章列表传给模板"""

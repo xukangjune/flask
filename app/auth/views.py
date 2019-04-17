@@ -12,8 +12,7 @@ from .forms import LoginForm, RegistrationForm, ChangePasswordForm, PasswordRese
 """每接收一次request请求后都会优先进入此视图函数（auth.before_app_request的作用）"""
 @auth.before_app_request
 def before_request():
-    """如果用户登录了，但是没有确认账户，而且请求的端点不在认证蓝本中。
-    以上都满足的话，就会到auth.confirmed的视图函数中。更新已登录
+    """如果用户登录了，但是没有确认账户，而且请求的端点不在认证蓝本中。以上都满足的话，就会到auth.confirmed的视图函数中。更新已登录
     用户的访问时间。"""
     if current_user.is_authenticated:
         current_user.ping()
