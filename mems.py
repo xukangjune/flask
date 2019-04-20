@@ -13,6 +13,7 @@ from app import create_app, db
 from app.models import User, Follow, Role, Permission, Post, Comment
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
+# app = create_app('default')
 migrate = Migrate(app, db)
 
 
@@ -73,5 +74,5 @@ def deploy():
     User.add_self_follows()
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# if __name__ == "__main__":
+#     app.run(debug=True)
