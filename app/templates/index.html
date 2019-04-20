@@ -2,12 +2,18 @@
 {% import "bootstrap/wtf.html" as wtf %}
 {% import "_macros.html" as macros %}
 
-{% block title %}PornHub{% endblock %}
+{% block title %}MEMS{% endblock %}
 
 {% block page_content %}
 <div class="page-header">
     <!--如果当前用户存在且已经被认证-->
-    <h1>欢迎, {% if current_user.is_authenticated %}{{ current_user.username }}{% else %}陌生人{% endif %}!</h1>
+    <h1>{% if current_user.is_authenticated %}欢迎回来， {{ current_user.username }}！{% else %}你好， 陌生人！{% endif %}!</h1>
+</div>
+<div>
+    <!--如果用户具有写文章的权力，就显示一个表单-->
+    {% if current_user.can(Permission.WRITE) %}
+    {{ wtf.quick_form(form) }}
+    {% endif %}
 </div>
 <div class="post-tabs">
     <ul class="nav nav-tabs">
@@ -18,6 +24,7 @@
     </ul>
     {% include '_posts.html' %}
 </div>
+<!--支持分页-->
 {% if pagination %}
 <div class="pagination">
     {{ macros.pagination_widget(pagination, '.index') }}

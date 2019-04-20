@@ -1,3 +1,6 @@
+"""
+同样，comments里的所有函数和post模块里的函数也是一样的做用
+"""
 from flask import jsonify, request, g, url_for, current_app
 from .. import db
 from ..models import Post, Permission, Comment

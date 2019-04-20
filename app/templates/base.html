@@ -26,29 +26,28 @@
                 <li><a href="{{ url_for('main.index') }}">首页</a></li>
                 <!-- 如果用户已经认证，那么显示资料页面-->
                 {% if current_user.is_authenticated %}
-                    <!-- 如果点击了网页上的个人主页选项，就会跳转到main.user视图函数上-->
+                <!-- 如果点击了网页上的个人主页选项，就会跳转到main.user视图函数上-->
                 <li><a href="{{ url_for('main.user', username=current_user.username) }}">个人主页</a></li>
                 {% endif %}
             </ul>
             <ul class="nav navbar-nav navbar-right">
                 <!--判断用户是否具有修改评论的权限，只有具有该权限的人才能看到-->
                 {% if current_user.can(Permission.MODERATE) %}
-                <li><a href="{{ url_for('main.moderate') }}">管理评论</a></li>
+                <li><a href="{{ url_for('main.moderate') }}">审查评论</a></li>
                 {% endif %}
                 {% if current_user.is_authenticated %}
-                    <!--刚开始如果用户已经登录了，就显示登出-->
-                    <li class="dropdown">
+                <!--刚开始如果用户已经登录了，就显示登出-->
+                <li class="dropdown">
                     <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                         <img src="{{ current_user.gravatar(size=18) }}">
-                        Account <b class="caret"></b>
+                        账户 <b class="caret"></b>
                     </a>
                     <ul class="dropdown-menu">
-                        <li><a href="{{ url_for('auth.change_name') }}">修改用户名</a></li>
                         <li><a href="{{ url_for('auth.change_password') }}">修改密码</a></li>
-                        <li><a href="{{ url_for('auth.logout') }}">登出</a></li>
+                        <li><a href="{{ url_for('auth.change_email_request') }}">修改Email</a></li>
+                        <li><a href="{{ url_for('auth.logout') }}">退出</a></li>
                     </ul>
                 </li>
-
                 {% else %}
                 <li><a href="{{ url_for('auth.login') }}">登录</a></li>
                 {% endif %}

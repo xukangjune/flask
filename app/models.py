@@ -1,16 +1,14 @@
-from faker import Faker
-from sqlalchemy.exc import IntegrityError
-
-import hashlib
-import bleach
 from datetime import datetime
-from markdown import markdown
+import hashlib
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
+from markdown import markdown
+import bleach
 from flask import current_app, request, url_for
 from flask_login import UserMixin, AnonymousUserMixin
 from app.exceptions import ValidationError
 from . import db, login_manager
+
 
 class Permission:
     FOLLOW = 1
@@ -35,6 +33,7 @@ class Role(db.Model):
         super(Role, self).__init__(**kwargs)
         if self.permissions is None:
             self.permissions = 0
+
 
     """这个类方法用来初始化和添加Role表中新的角色"""
     @staticmethod
@@ -83,39 +82,43 @@ class Role(db.Model):
 class Follow(db.Model):
     __tablename__ = 'follows'
     __table_args__ = {'mysql_charset': 'utf8'}
-    follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
-    followed_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    follower_id = db.Column(db.Integer, db.ForeignKey('users.id'),
+                            primary_key=True)
+    followed_id = db.Column(db.Integer, db.ForeignKey('users.id'),
+                            primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
-    __table_args__ = {'mysql_charset': 'utf8'}
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(64), unique=True, index=True)
     username = db.Column(db.String(64), unique=True, index=True)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
     password_hash = db.Column(db.String(128))
     confirmed = db.Column(db.Boolean, default=False)
-    """新添加字段包括真实姓名、所在地、自我介绍、注册日期和最后访问日期"""
     name = db.Column(db.String(64))
     location = db.Column(db.String(64))
     about_me = db.Column(db.Text())
     """utcnow后面没有（），因为db.Column()的default参数可以接受函数作为默认值"""
     member_since = db.Column(db.DateTime(), default=datetime.utcnow)
     last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
-    """这是用来缓存邮箱地址的MD5散列值"""
+    """这是用来缓存邮箱地址的MD5散列值，可以取avatar获取头像"""
     avatar_hash = db.Column(db.String(32))
     posts = db.relationship('Post', backref='author', lazy='dynamic')
-    followed = db.relationship('Follow', foreign_keys=[Follow.follower_id],
-                               backref=db.backref('follower', lazy='joined'), lazy='dynamic',
+    followed = db.relationship('Follow',
+                               foreign_keys=[Follow.follower_id],
+                               backref=db.backref('follower', lazy='joined'),
+                               lazy='dynamic',
                                cascade='all, delete-orphan')
-    followers = db.relationship('Follow', foreign_keys=[Follow.followed_id],
-                               backref=db.backref('followed', lazy='joined'), lazy='dynamic',
-                               cascade='all, delete-orphan')
+    followers = db.relationship('Follow',
+                                foreign_keys=[Follow.followed_id],
+                                backref=db.backref('followed', lazy='joined'),
+                                lazy='dynamic',
+                                cascade='all, delete-orphan')
     comments = db.relationship('Comment', backref='author', lazy='dynamic')
 
-    """将用户设为自己的关注者"""
+    """将用户设为自己的关注者，这样就能更方便的看自己的文章"""
     @staticmethod
     def add_self_follows():
         for user in User.query.all():
@@ -125,7 +128,7 @@ class User(UserMixin, db.Model):
                 db.session.commit()
 
     """这里就来构造实例了，传入的参数就是id，email，name什么的。如果角色没有分配的话，就先检查是否是管理员，这可以
-    从邮箱的确认。看邮箱是否与本地存储的管理员邮箱一直，如果是的话，就将role设为管理员；如果不是，那么就是设为默认。 """
+        从邮箱的确认。看邮箱是否与本地存储的管理员邮箱一直，如果是的话，就将role设为管理员；如果不是，那么就是设为默认。"""
     def __init__(self, **kwargs):
         super(User, self).__init__(**kwargs)
         if self.role is None:
@@ -133,14 +136,13 @@ class User(UserMixin, db.Model):
                 self.role = Role.query.filter_by(name='Administrator').first()
             if self.role is None:
                 self.role = Role.query.filter_by(default=True).first()
-
         """如果邮箱存在且散列码为空，就重新生成散列码，并提交到数据库"""
         if self.email is not None and self.avatar_hash is None:
             self.avatar_hash = self.gravatar_hash()
-
         """自己变成自己的关注者"""
         self.follow(self)
 
+    """这里将类方法变成属性"""
     @property
     def password(self):
         raise AttributeError('password is not a readable attribute')
@@ -150,13 +152,16 @@ class User(UserMixin, db.Model):
         self.password_hash = generate_password_hash(password)
 
     def verify_password(self, password):
+        # 确认密码
         return check_password_hash(self.password_hash, password)
 
     def generate_confirmation_token(self, expiration=3600):
+        # 获取确认的密令
         s = Serializer(current_app.config['SECRET_KEY'], expiration)
         return s.dumps({'confirm': self.id}).decode('utf-8')
 
     def confirm(self, token):
+        # 确认账户
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
             data = s.loads(token.encode('utf-8'))
@@ -169,6 +174,7 @@ class User(UserMixin, db.Model):
         return True
 
     def generate_reset_token(self, expiration=3600):
+        # 重设密令
         s = Serializer(current_app.config['SECRET_KEY'], expiration)
         return s.dumps({'reset': self.id}).decode('utf-8')
 
@@ -179,7 +185,6 @@ class User(UserMixin, db.Model):
             data = s.loads(token.encode('utf-8'))
         except:
             return False
-        """根据ID找到重设密码的账户"""
         user = User.query.get(data.get('reset'))
         if user is None:
             return False
@@ -187,7 +192,29 @@ class User(UserMixin, db.Model):
         db.session.add(user)
         return True
 
-    """添加两个方法来确认角色是否拥有某一个权限或是否是管理员"""
+    def generate_email_change_token(self, new_email, expiration=3600):
+        s = Serializer(current_app.config['SECRET_KEY'], expiration)
+        return s.dumps(
+            {'change_email': self.id, 'new_email': new_email}).decode('utf-8')
+
+    def change_email(self, token):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token.encode('utf-8'))
+        except:
+            return False
+        if data.get('change_email') != self.id:
+            return False
+        new_email = data.get('new_email')
+        if new_email is None:
+            return False
+        if self.query.filter_by(email=new_email).first() is not None:
+            return False
+        self.email = new_email
+        self.avatar_hash = self.gravatar_hash()
+        db.session.add(self)
+        return True
+
     def can(self, perm):
         return self.role is not None and self.role.has_permission(perm)
 
@@ -198,7 +225,6 @@ class User(UserMixin, db.Model):
         self.last_seen = datetime.utcnow()
         db.session.add(self)
 
-    """计算邮箱的MD5散列值"""
     def gravatar_hash(self):
         return hashlib.md5(self.email.lower().encode('utf-8')).hexdigest()
 
@@ -210,28 +236,6 @@ class User(UserMixin, db.Model):
         return '{url}/{hash}?s={size}&d={default}&r={rating}'.format(
             url=url, hash=hash, size=size, default=default, rating=rating)
 
-
-    """创建虚拟用户"""
-    @staticmethod
-    def createUsers(count=100):
-        fake = Faker()
-        i = 0
-        while i < count:
-            u = User(email=fake.email(),
-                     username=fake.user_name(),
-                     password='password',
-                     confirmed=True,
-                     name=fake.name(),
-                     location=fake.city(),
-                     about_me=fake.text(),
-                     member_since=fake.past_date())
-            db.session.add(u)
-            try:
-                db.session.commit()
-                i += 1
-            except IntegrityError:
-                db.session.rollback()
-
     """下面四个函数用来判断是否是某个用户的粉丝，以及某个用户是否是自己的粉丝。"""
     def follow(self, user):
         if not self.is_following(user):
@@ -241,7 +245,7 @@ class User(UserMixin, db.Model):
     def unfollow(self, user):
         f = self.followed.filter_by(followed_id=user.id).first()
         if f:
-            self.followed.remove(f)
+            db.session.delete(f)
 
     def is_following(self, user):
         if user.id is None:
@@ -252,15 +256,16 @@ class User(UserMixin, db.Model):
     def is_followed_by(self, user):
         if user.id is None:
             return False
-        return self.followers.filter_by(follower_id=user.id).first() is not None
+        return self.followers.filter_by(
+            follower_id=user.id).first() is not None
 
     @property
     def followed_posts(self):
-        return Post.query.join(Follow, Follow.followed_id == Post.author_id) \
+        return Post.query.join(Follow, Follow.followed_id == Post.author_id)\
             .filter(Follow.follower_id == self.id)
 
-    """将用户转换成JSON格式的序列化字典"""
     def to_json(self):
+        # 将用户相关信息转化成字典，后面可以使用函数将字典以JSON格式返回。
         json_user = {
             'url': url_for('api.get_user', id=self.id),
             'username': self.username,
@@ -273,24 +278,23 @@ class User(UserMixin, db.Model):
         }
         return json_user
 
-    """用户id字段值生成一个签名令牌"""
+    """获取认证密令"""
     def generate_auth_token(self, expiration):
-        s = Serializer(current_app.config['SECRET_KEY'], expires_in=expiration)
-        return s.dumps({'id':self.id}).decode('utf-8')
+        s = Serializer(current_app.config['SECRET_KEY'],
+                       expires_in=expiration)
+        return s.dumps({'id': self.id}).decode('utf-8')
 
     @staticmethod
     def verify_auth_token(token):
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
-            data = s.load(token)
+            data = s.loads(token)
         except:
             return None
         return User.query.get(data['id'])
 
-
     def __repr__(self):
         return '<User %r>' % self.username
-
 
 
 """在登录之前是匿名用户，所以没有权限，而且不是管理员"""
@@ -300,6 +304,7 @@ class AnonymousUser(AnonymousUserMixin):
 
     def is_administrator(self):
         return False
+
 """没登录之前设为匿名用户"""
 login_manager.anonymous_user = AnonymousUser
 
@@ -321,8 +326,6 @@ class Post(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     comments = db.relationship('Comment', backref='post', lazy='dynamic')
 
-
-    """创建虚拟博客"""
     @staticmethod
     def on_changed_body(target, value, oldvalue, initiator):
         allowed_tags = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code',
@@ -332,7 +335,7 @@ class Post(db.Model):
             markdown(value, output_format='html'),
             tags=allowed_tags, strip=True))
 
-    """将博客文章转换为JSON格式的序列化字典"""
+    """同样将博客文章的信息也做成字典格式，便于后面作为JSON格式返回"""
     def to_json(self):
         json_post = {
             'url': url_for('api.get_post', id=self.id),
@@ -345,13 +348,15 @@ class Post(db.Model):
         }
         return json_post
 
-    """从JSON文件读取博客文章"""
+    """从用户返回的JSON文件中提取文章"""
     @staticmethod
     def from_json(json_post):
         body = json_post.get('body')
         if body is None or body == '':
+            # 如果没有body字段或为空，那么会抛出一个异常，该异常会被捕捉
             raise ValidationError('post does not have a body')
         return Post(body=body)
+
 
 """只要这个实例的body字段设了新值，函数就会自动被调用"""
 db.event.listen(Post.body, 'set', Post.on_changed_body)
@@ -377,7 +382,6 @@ class Comment(db.Model):
             markdown(value, output_format='html'),
             tags=allowed_tags, strip=True))
 
-
     def to_json(self):
         json_comment = {
             'url': url_for('api.get_comment', id=self.id),
@@ -395,6 +399,7 @@ class Comment(db.Model):
         if body is None or body == '':
             raise ValidationError('comment does not have a body')
         return Comment(body=body)
+
 
 """定义一个事件，只要有新的评论添加，就会自动调用函数"""
 db.event.listen(Comment.body, 'set', Comment.on_changed_body)

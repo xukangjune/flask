@@ -6,12 +6,13 @@ from .decorators import permission_required
 from .errors import forbidden
 
 
-"""这是客户端要获得的文章的集合，这里用到了分页管理，即只返回一定数目的文章，其他的都放在上页和下页当中"""
 @api.route('/posts/')
 def get_posts():
+    # 获取所有的博客文章，对文章进行分页
     page = request.args.get('page', 1, type=int)
     pagination = Post.query.paginate(
-        page, per_page=current_app.config['POSTS_PER_PAGE'], error_out=False)
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'],
+        error_out=False)
     posts = pagination.items
     prev = None
     if pagination.has_prev:
@@ -27,31 +28,34 @@ def get_posts():
     })
 
 
-"""返回单篇博客文章"""
 @api.route('/posts/<int:id>')
 def get_post(id):
+    # 获取单篇博客文章并返回，使用Post的to_json方法
     post = Post.query.get_or_404(id)
     return jsonify(post.to_json())
 
 
-"""写博客的路由，首先检查有没有权限，然后将写好的博客提交到数据库，然后一并返回"""
 @api.route('/posts/', methods=['POST'])
 @permission_required(Permission.WRITE)
-def new_posts():
+def new_post():
+    # 提交新博客，并提交数据库，先要看这个用户是否具有写博客的权限
     post = Post.from_json(request.json)
     post.author = g.current_user
     db.session.add(post)
     db.session.commit()
-    return jsonify(post.to_json()), 201, {'Location':url_for('api.get_post', id=post.id)}
+    # 返回的响应包含的刚刚创建的博客
+    return jsonify(post.to_json()), 201, \
+        {'Location': url_for('api.get_post', id=post.id)}
 
 
-"""编辑旧博客文章，先要检查是否具有此权限，然后还有判断是否是该博客的作者或者是管理员，最后返回博客的所有内容"""
 @api.route('/posts/<int:id>', methods=['PUT'])
 @permission_required(Permission.WRITE)
 def edit_post(id):
+    # 修改博客，所以先也要检查权限
     post = Post.query.get_or_404(id)
-    if g.current_user != post.author and not g.current_user.can(Permission.ADMIN):
-        return forbidden("您没有权限编辑此文章！")
+    if g.current_user != post.author and \
+            not g.current_user.can(Permission.ADMIN):
+        return forbidden('Insufficient permissions')
     post.body = request.json.get('body', post.body)
     db.session.add(post)
     db.session.commit()
